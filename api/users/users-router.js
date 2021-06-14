@@ -1,40 +1,49 @@
-// Require the `restricted` middleware from `auth-middleware.js`. You will need it here!
-const {restricted} =  require('./auth/auth-middleware')
-const router = require('express').Router();
-const User = require('./users-model')
+require('dotenv').config();
 
-router.get('/api/users', restricted, async (req, res, next) => { //eslint-disable-line
-  try {
-    const users = await User.find()
-    res.status(200).json(users)
-  } catch {
-    res.status(401).json({message: 'You shall not pass!'})
-  }
-})
-module.exports = router;
+const express = require("express");
+const helmet = require("helmet");
+const cors = require("cors");
+const session = require("express-session")
+const sessionStore = require("connect-session-knex")(session)
 
-/**
-  [GET] /api/users
+const usersRouter = require("./users/users-router")
+const authRouter = require("./auth/auth-router")
 
-  This endpoint is RESTRICTED: only authenticated clients
-  should have access.
+const server = express();
 
-  response:
-  status 200
-  [
-    {
-      "user_id": 1,
-      "username": "bob"
-    },
-    // etc
-  ]
+server.use(helmet());
+server.use(express.json());
+server.use(cors());
+server.use(session({
+  name: 'chocolatechip',
+  secret: process.env.SESSION_SECRET,
+  cookie: {
+    maxAge: 1000 * 100,
+    secure: false,
+    httpOnly: true
+  },
+  resave: false,
+  saveUninitialized: false,
+  store: new sessionStore({
+    knex: require('../data/db-config'),
+    tablename: 'sid',
+    createTable: true,
+    clearInterval: 1000 * 60 * 60
+  })
+}))
 
-  response on non-authenticated:
-  status 401
-  {
-    "message": "You shall not pass!"
-  }
- */
+server.use("/api/auth", authRouter)
+server.use("/api/users", usersRouter)
 
+server.get("/", (req, res) => {
+  res.json({ api: "up" });
+});
 
-// Don't forget to add the router to the `exports` object so it can be required in other modules
+server.use((err, req, res, next) => { // eslint-disable-line
+  res.status(500).json({
+    message: err.message,
+    stack: err.stack,
+  });
+});
+
+module.exports = server;
